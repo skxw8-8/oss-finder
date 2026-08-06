@@ -66,13 +66,21 @@ def build_headers() -> dict:
     return headers
 
 
+# Repos whose name contains any of these are almost always curated meta-lists
+# ("awesome-x", "x-cheatsheet") rather than actual runnable apps, even though
+# they often rank very high on stars and match broadly on text search.
+META_LIST_MARKERS = ["awesome", "cheatsheet", "cheat-sheet", "interview", "roadmap", "resources"]
+
+
 def search_apps(need: str, limit: int = 10, strict: bool = False) -> list[AppResult]:
-    query = f"{need} in:name,description,readme"
+    # Search only name + description (not readme) — readme matches are what
+    # pull in giant curated list repos that merely mention the term somewhere.
+    # No explicit "sort" param = GitHub's best-match relevance ranking,
+    # which surfaces actually-on-topic repos instead of just the most-starred.
+    query = f"{need} in:name,description"
     params = {
         "q": query,
-        "sort": "stars",
-        "order": "desc",
-        "per_page": min(max(limit * 2, 15), 50),
+        "per_page": min(max(limit * 3, 20), 50),
     }
 
     resp = requests.get(GITHUB_API_URL, headers=build_headers(), params=params, timeout=15)
@@ -89,6 +97,10 @@ def search_apps(need: str, limit: int = 10, strict: bool = False) -> list[AppRes
 
     results: list[AppResult] = []
     for item in items:
+        name = item.get("name", "")
+        if any(marker in name.lower() for marker in META_LIST_MARKERS):
+            continue
+
         license_info = item.get("license") or {}
         license_name = license_info.get("spdx_id") or license_info.get("name") or "Unknown"
         stars = item.get("stargazers_count", 0)
